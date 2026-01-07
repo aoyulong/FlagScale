@@ -1,0 +1,17 @@
+name: All Tests (CUDA)
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
+
+jobs:
+  all_tests:
+    uses: ./.github/workflows/all_tests_common.yml
+    with:
+      hardware: cuda

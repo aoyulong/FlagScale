@@ -65,11 +65,13 @@ jobs:
           
           TASK='${{ matrix.task }}'
           TYPE='${{ inputs.type }}'
+          PROJECT_ROOT="/__w/FlagScale/FlagScale"
           
           echo "Running functional test ($TYPE) for task: $TASK"
+          echo "Project root: $PROJECT_ROOT"
           
           # Load retry functions
-          source .github/workflows/scripts/retry_functions.sh
+          source "$PROJECT_ROOT/.github/workflows/scripts/retry_functions.sh"
           
           # Setup backend
           source /root/miniconda3/bin/activate flagscale-train
@@ -82,8 +84,11 @@ jobs:
           )
           retry_commands 3 "${COMMANDS[@]}"
           
+          # Ensure we're back in the project root
+          cd "$PROJECT_ROOT"
+          
           # Run test for this task
-          tests/scripts/functional_tests/test_task.sh --type "$TYPE" --task "$TASK"
+          "$PROJECT_ROOT/tests/scripts/functional_tests/test_task.sh" --type "$TYPE" --task "$TASK"
           exit_code=$?
           echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
           exit $exit_code

@@ -56,6 +56,7 @@ jobs:
           set-safe-directory: true
 
       - name: Run functional test
+        id: functional_test
         shell: bash
         run: |
           set -euo pipefail
@@ -67,12 +68,32 @@ jobs:
           
           echo "Running functional test ($TYPE) for task: $TASK"
           
+          # Load retry functions
+          source .github/workflows/scripts/retry_functions.sh
+          
           # Setup backend
           source /root/miniconda3/bin/activate flagscale-train
-          git clone https://github.com/flagos-ai/Megatron-LM-FL.git
-          cd Megatron-LM-FL && pip install --no-build-isolation . && cd -
-          pip install httpx multi-storage-client boto3 google-cloud-storage fastapi uvicorn griffe
+          
+          COMMANDS=(
+            "rm -rf ${GITHUB_WORKSPACE}/Megatron-LM-FL"
+            "git clone https://github.com/flagos-ai/Megatron-LM-FL.git"
+            "pip install httpx multi-storage-client boto3 google-cloud-storage fastapi uvicorn griffe"
+            "cd ${GITHUB_WORKSPACE}/Megatron-LM-FL && pip install --no-build-isolation . -vvv"
+          )
+          retry_commands 3 "${COMMANDS[@]}"
           
           # Run test for this task
           tests/scripts/functional_tests/test_task.sh --type "$TYPE" --task "$TASK"
+          exit_code=$?
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          exit $exit_code
         timeout-minutes: 90
+
+      - name: Upload Functional Test Logs
+        if: always() && steps.functional_test.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: functional_tests-logs-${{ github.run_id }}-${{ inputs.type }}-${{ matrix.task }}
+          path: tests/functional_tests/test_cases/${{ inputs.type }}/${{ matrix.task }}/results_test
+          retention-days: 7
+          if-no-files-found: warn

@@ -55,6 +55,7 @@ jobs:
           set-safe-directory: true
 
       - name: Run unit tests
+        id: unit_test
         shell: bash
         run: |
           set -euo pipefail
@@ -66,17 +67,31 @@ jobs:
           SHA='${{ github.sha }}'
           
           echo "Running unit tests for subset: $SUBSET"
+          echo "Backend: $BACKEND"
           
           # Setup backend if needed
           if [ "$BACKEND" = "train_flagscale" ]; then
+            echo "Setting up training backend dependencies..."
+            source /root/miniconda3/bin/activate flagscale-train
+            source .github/workflows/scripts/retry_functions.sh
+            
+            # For megatron unit tests
             mkdir -p /opt/data
             cp -r /home/gitlab-runner/data/Megatron-LM/* /opt/data/ || true
             cp -r /home/gitlab-runner/tokenizers/Megatron-LM/* /opt/data/ || true
-            source /root/miniconda3/bin/activate flagscale-train
-            git clone https://github.com/flagos-ai/Megatron-LM-FL.git
-            cd Megatron-LM-FL && pip install --no-build-isolation . && cd -
+            
+            # Install megatron.core with retry
+            COMMANDS=(
+              "rm -rf ${GITHUB_WORKSPACE}/Megatron-LM-FL"
+              "git clone https://github.com/flagos-ai/Megatron-LM-FL.git"
+              "cd ${GITHUB_WORKSPACE}/Megatron-LM-FL && pip install --no-build-isolation . -vvv"
+            )
+            retry_commands 3 "${COMMANDS[@]}"
           fi
           
           # Run tests for this subset
           tests/scripts/unit_tests/test_subset.sh --backend "$BACKEND" --subset "$SUBSET" --id "$SHA"
+          exit_code=$?
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          exit $exit_code
         timeout-minutes: 90

@@ -119,41 +119,12 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Check test results
+      - name: Verify all tests passed
         run: |
-          echo "📋 Test Results Summary:"
-          echo "========================"
-          
-          UNIT_TESTS_RESULT="${{ needs.unit_tests.result }}"
-          FUNCTIONAL_TRAIN_RESULT="${{ needs.functional_tests_train.result }}"
-          FUNCTIONAL_HETERO_RESULT="${{ needs.functional_tests_hetero_train.result }}"
-          
-          echo "✓ Load config: success"
-          echo "✓ Unit tests: $UNIT_TESTS_RESULT"
-          echo "✓ Functional train tests: $FUNCTIONAL_TRAIN_RESULT"
-          echo "✓ Functional hetero_train tests: $FUNCTIONAL_HETERO_RESULT"
-          echo "========================"
-          
-          FAILED=false
-          
-          if [ "$UNIT_TESTS_RESULT" != "success" ]; then
-            echo "❌ Unit tests failed"
-            FAILED=true
-          fi
-          if [ "$FUNCTIONAL_TRAIN_RESULT" != "success" ]; then
-            echo "❌ Functional train tests failed"
-            FAILED=true
-          fi
-          if [ "$FUNCTIONAL_HETERO_RESULT" != "success" ]; then
-            echo "❌ Functional hetero_train tests failed"
-            FAILED=true
-          fi
-          
-          if [ "$FAILED" = true ]; then
-            echo ""
-            echo "❌ Some tests failed. Please check the logs above."
+          if [ "${{ needs.unit_tests.result }}" != "success" ] || \
+             [ "${{ needs.functional_tests_train.result }}" != "success" ] || \
+             [ "${{ needs.functional_tests_hetero_train.result }}" != "success" ]; then
+            echo "❌ Some tests failed"
             exit 1
           fi
-          echo ""
           echo "✅ All tests completed successfully!"
-          exit 0

@@ -1,0 +1,88 @@
+name: Common Functional Tests - RL
+
+# PLACEHOLDER: This workflow is a placeholder for future rl task implementation
+# When rl tasks are added, this workflow will be fully implemented
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        required: true
+        type: string
+        description: Platform name (e.g., cuda, default)
+      test_matrix:
+        required: true
+        type: string
+        description: JSON array of test configurations
+      image:
+        required: true
+        type: string
+      runs_on:
+        required: true
+        type: string
+      container_volumes:
+        required: true
+        type: string
+      container_options:
+        required: true
+        type: string
+      source_artifact:
+        required: true
+        type: string
+        description: Name of the artifact containing source code
+
+jobs:
+  functional_test_rl:
+    runs-on: ${{ fromJson(inputs.runs_on) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test_config: ${{ fromJson(inputs.test_matrix) }}
+    container:
+      image: ${{ inputs.image }}
+      ports:
+        - 80
+      volumes: ${{ fromJson(inputs.container_volumes) }}
+      options: ${{ inputs.container_options }}
+
+    steps:
+      - name: Download source code artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.source_artifact }}
+          path: /tmp
+
+      - name: Extract source code
+        shell: bash
+        run: |
+          mkdir -p /__w/FlagScale/FlagScale
+          tar -xzf /tmp/flagscale-source.tar.gz -C /__w/FlagScale/FlagScale
+
+      - name: Set safe directory
+        shell: bash
+        run: |
+          git config --global --add safe.directory /__w/FlagScale/FlagScale
+
+      - name: Placeholder - Install dependencies for rl
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /__w/FlagScale/FlagScale
+
+          echo "⚠️  PLACEHOLDER: RL task not yet implemented"
+          echo "When implemented, this step will:"
+          echo "  - Activate flagscale-rl conda environment"
+          echo "  - Run: ./install/install.sh --platform cuda --task rl --skip-conda-create --retry-count 3"
+          echo ""
+          echo "Skipping for now as no rl tests are defined."
+        timeout-minutes: 1
+
+      - name: Placeholder - Run functional tests
+        id: functional_test
+        shell: bash
+        run: |
+          echo "⚠️  PLACEHOLDER: RL functional tests not yet implemented"
+          echo "When implemented, this will run rl tests using run_tests.sh"
+          echo "✅ Placeholder completed successfully"
+          echo "exit_code=0" >> $GITHUB_OUTPUT
+        timeout-minutes: 1

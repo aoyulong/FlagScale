@@ -1,0 +1,62 @@
+# Common dependencies used by all tasks
+# This file contains core packages, testing tools, and common utilities
+
+# Core packages
+aiohttp
+gitpython
+hydra-core
+numpy
+pandas
+psutil
+PyYAML
+requests
+tqdm
+accelerate
+cryptography
+matplotlib
+sentencepiece
+tensorboard
+ray
+pybase64
+orjson
+pynvml
+webdataset
+epath
+wandb
+pyarrow
+h5py
+scipy
+
+# Build tools
+pybind11==2.13.6
+scikit-build
+scikit-build-core
+
+# Code quality and formatting
+black==24.4.2
+isort==5.13.2
+flake8==7.1.0
+pylint==3.2.6
+pre-commit>=4.2.0
+diff-cover
+
+# Testing
+coverage
+pytest
+pytest_asyncio
+pytest-cov
+pytest_mock
+pytest-random-order
+
+# Serving and data processing
+diffusers
+translate
+imageio
+python-multipart
+imageio[ffmpeg]
+ks3sdk
+flask
+flask_cors
+tqdm_loggable
+types_boto3_s3
+qwen_vl_utils

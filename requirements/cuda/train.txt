@@ -1,0 +1,10 @@
+# Training-specific dependencies
+# These packages are required for functional tests of training tasks
+
+httpx
+multi-storage-client
+boto3
+google-cloud-storage
+fastapi
+uvicorn
+griffe

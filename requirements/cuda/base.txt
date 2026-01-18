@@ -1,0 +1,8 @@
+# CUDA platform-specific base dependencies
+# Add CUDA-specific packages here (e.g., torch with CUDA support)
+# Platform-agnostic packages should go in requirements/common.txt
+
+# TODO: Add CUDA-specific packages when needed
+# Example:
+# torch==2.0.0+cu118
+# nvidia-cuda-runtime-cu11

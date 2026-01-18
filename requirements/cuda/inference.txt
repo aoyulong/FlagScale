@@ -1,0 +1,9 @@
+# Inference-specific dependencies
+# PLACEHOLDER: To be implemented when inference tasks are added
+#
+# Example dependencies that may be needed:
+# vllm
+# transformers
+# fastapi
+# uvicorn
+# triton

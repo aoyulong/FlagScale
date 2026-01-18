@@ -1,0 +1,11 @@
+# Heterogeneous training-specific dependencies
+# These packages are required for functional tests of hetero_train tasks
+# Currently same as training dependencies but separated for future flexibility
+
+httpx
+multi-storage-client
+boto3
+google-cloud-storage
+fastapi
+uvicorn
+griffe

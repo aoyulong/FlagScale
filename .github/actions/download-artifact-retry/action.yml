@@ -9,10 +9,6 @@ inputs:
     description: Path where artifact should be downloaded
     required: false
     default: /tmp
-  timeout-minutes:
-    description: Timeout in minutes for each download attempt
-    required: false
-    default: '10'
 
 runs:
   using: composite
@@ -22,10 +18,8 @@ runs:
       with:
         name: ${{ inputs.artifact-name }}
         path: ${{ inputs.download-path }}
-      timeout-minutes: ${{ inputs.timeout-minutes }}
       continue-on-error: true
       id: download_attempt_1
-      shell: bash
 
     - name: Download artifact (attempt 2)
       if: steps.download_attempt_1.outcome == 'failure'
@@ -33,10 +27,8 @@ runs:
       with:
         name: ${{ inputs.artifact-name }}
         path: ${{ inputs.download-path }}
-      timeout-minutes: ${{ inputs.timeout-minutes }}
       continue-on-error: true
       id: download_attempt_2
-      shell: bash
 
     - name: Download artifact (attempt 3)
       if: steps.download_attempt_2.outcome == 'failure'
@@ -44,9 +36,7 @@ runs:
       with:
         name: ${{ inputs.artifact-name }}
         path: ${{ inputs.download-path }}
-      timeout-minutes: ${{ inputs.timeout-minutes }}
       id: download_attempt_3
-      shell: bash
 
     - name: Check download success
       shell: bash

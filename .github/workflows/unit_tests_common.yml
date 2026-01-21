@@ -44,7 +44,6 @@ jobs:
         with:
           artifact-name: ${{ inputs.source_artifact }}
           download-path: /tmp
-          timeout-minutes: 10
 
       - name: Extract source code
         shell: bash

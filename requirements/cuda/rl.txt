@@ -1,7 +1,3 @@
-# RL (Reinforcement Learning) specific dependencies
-# PLACEHOLDER: To be implemented when rl tasks are added
-#
-# Example dependencies that may be needed:
-# ray[rllib]
-# gym
-# stable-baselines3
+# Reinforcement Learning specific dependencies
+
+-r ./base.txt

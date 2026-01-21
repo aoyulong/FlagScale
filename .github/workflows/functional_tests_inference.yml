@@ -72,7 +72,7 @@ jobs:
           echo "⚠️  PLACEHOLDER: Inference task not yet implemented"
           echo "When implemented, this step will:"
           echo "  - Activate flagscale-inference conda environment"
-          echo "  - Run: ./install/install.sh --platform cuda --task inference --skip-conda-create --retry-count 3"
+          echo "  - Run: ./tools/install/install.sh --platform cuda --task inference --skip-conda-create --retry-count 3"
           echo ""
           echo "Skipping for now as no inference tests are defined."
         timeout-minutes: 1

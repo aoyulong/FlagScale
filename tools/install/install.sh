@@ -1,6 +1,12 @@
 #!/bin/bash
 # Master installation orchestrator script
 # Delegates to task-specific install scripts
+#
+# Task Discovery:
+#   Valid tasks are discovered from platform configuration files
+#   (tests/test_utils/config/platforms/*.yaml) which define supported
+#   tasks under the functional tests section. Install scripts serve
+#   as a fallback to ensure all tasks with implementations are recognized.
 
 set -euo pipefail
 
@@ -14,14 +20,75 @@ PROJECT_ROOT=$(get_project_root)
 TASK=""
 PLATFORM="cuda"  # Default to CUDA platform
 ENV_NAME=""
-SKIP_BASE="false"
-SKIP_MEGATRON="false"
 SKIP_CONDA_CREATE="false"
 RETRY_COUNT="3"
 
-# Valid tasks and platforms
-VALID_TASKS=("train" "hetero_train" "inference" "rl" "all")
-VALID_PLATFORMS=("cuda" "cpu")
+# Dynamically discover valid tasks from platform configuration
+discover_valid_tasks() {
+    local tasks=()
+    local parse_config="$PROJECT_ROOT/tests/test_utils/runners/parse_config.py"
+
+    # Primary method: Get tasks from platform configuration
+    # This is the source of truth for which tasks are supported on the platform
+    if [ -f "$parse_config" ] && command -v python >/dev/null 2>&1; then
+        # Use parse_config.py to get functional tests from platform config
+        # Extract task names (top-level keys) from the JSON output
+        while IFS= read -r task; do
+            if [ -n "$task" ]; then
+                tasks+=("$task")
+            fi
+        done < <(python "$parse_config" --platform "$PLATFORM" --type functional 2>/dev/null | \
+                 python -c "import sys, json; data = json.load(sys.stdin); print('\\n'.join(data.keys()))" 2>/dev/null || true)
+    fi
+
+    # Fallback method: Get tasks from install scripts that exist
+    # This ensures tasks with install scripts but no tests yet are still valid
+    if [ -d "$SCRIPT_DIR/$PLATFORM" ]; then
+        for script in "$SCRIPT_DIR/$PLATFORM"/install_*.sh; do
+            if [ -f "$script" ]; then
+                task=$(basename "$script" | sed 's/^install_//' | sed 's/\.sh$//')
+                if [ "$task" != "base" ]; then
+                    # Add task if not already in array
+                    if [[ ! " ${tasks[@]} " =~ " ${task} " ]]; then
+                        tasks+=("$task")
+                    fi
+                fi
+            fi
+        done
+    fi
+
+    # Always add 'all' as a valid task for installing all dependencies
+    tasks+=("all")
+
+    # Return space-separated list
+    echo "${tasks[@]}"
+}
+
+# Dynamically discover valid platforms from test config
+discover_valid_platforms() {
+    local platforms=()
+
+    # Get platforms from test_utils/config/platforms/*.yaml files
+    local config_dir="$PROJECT_ROOT/tests/test_utils/config/platforms"
+    if [ -d "$config_dir" ]; then
+        for config_file in "$config_dir"/*.yaml; do
+            if [ -f "$config_file" ]; then
+                platform=$(basename "$config_file" .yaml)
+                # Skip template files
+                if [ "$platform" != "template" ]; then
+                    platforms+=("$platform")
+                fi
+            fi
+        done
+    fi
+
+    # Return space-separated list
+    echo "${platforms[@]}"
+}
+
+# Discover valid tasks and platforms
+VALID_TASKS=($(discover_valid_tasks))
+VALID_PLATFORMS=($(discover_valid_platforms))
 
 usage() {
     cat << EOF
@@ -30,11 +97,9 @@ Usage: $0 [OPTIONS]
 Master installation script for FlagScale dependencies.
 
 OPTIONS:
-    --task TASK              Task type: train, hetero_train, inference, rl, all (required)
-    --platform PLATFORM      Platform: cuda, cpu (default: cuda)
+    --task TASK              Task type: ${VALID_TASKS[*]} (required)
+    --platform PLATFORM      Platform: ${VALID_PLATFORMS[*]} (default: cuda)
     --env-name NAME          Custom conda environment name (optional)
-    --skip-base              Skip base dependency installation
-    --skip-megatron          Skip Megatron-LM-FL installation
     --skip-conda-create      Skip conda environment creation (use existing)
     --retry-count N          Number of retry attempts (default: 3)
     --help                   Show this help message
@@ -52,16 +117,16 @@ EXAMPLES:
     # Install with custom retry count
     $0 --task train --skip-conda-create --retry-count 5
 
-VALID TASKS:
-    train          - Training task dependencies
-    hetero_train   - Heterogeneous training task dependencies
-    inference      - Inference task dependencies (placeholder)
-    rl             - Reinforcement learning task dependencies (placeholder)
-    all            - Install all task dependencies
+TASK DISCOVERY:
+    Tasks are discovered from platform configuration files:
+      - Primary: tests/test_utils/config/platforms/\${PLATFORM}.yaml
+      - Fallback: install/\${PLATFORM}/install_*.sh scripts
 
-VALID PLATFORMS:
-    cuda           - NVIDIA CUDA platform (default)
-    cpu            - CPU-only platform (future)
+DISCOVERED VALID TASKS:
+$(printf '    %s\n' "${VALID_TASKS[@]}")
+
+DISCOVERED VALID PLATFORMS:
+$(printf '    %s\n' "${VALID_PLATFORMS[@]}")
 
 EOF
 }
@@ -80,14 +145,6 @@ parse_args() {
             --env-name)
                 ENV_NAME="$2"
                 shift 2
-                ;;
-            --skip-base)
-                SKIP_BASE="true"
-                shift
-                ;;
-            --skip-megatron)
-                SKIP_MEGATRON="true"
-                shift
                 ;;
             --skip-conda-create)
                 SKIP_CONDA_CREATE="true"
@@ -160,16 +217,12 @@ validate_inputs() {
 export_env_vars() {
     export PLATFORM
     export ENV_NAME
-    export SKIP_BASE
-    export SKIP_MEGATRON
     export RETRY_COUNT
     export PROJECT_ROOT
 
     log_info "Environment variables exported:"
     log_info "  PLATFORM=$PLATFORM"
     log_info "  ENV_NAME=$ENV_NAME"
-    log_info "  SKIP_BASE=$SKIP_BASE"
-    log_info "  SKIP_MEGATRON=$SKIP_MEGATRON"
     log_info "  RETRY_COUNT=$RETRY_COUNT"
     log_info "  PROJECT_ROOT=$PROJECT_ROOT"
 }
@@ -212,9 +265,12 @@ main() {
     # Install dependencies based on task
     if [ "$TASK" = "all" ]; then
         log_info "Installing dependencies for all tasks"
-        for task in train hetero_train inference rl; do
-            print_separator
-            install_task "$task"
+        # Install all valid tasks except 'all' itself
+        for task in "${VALID_TASKS[@]}"; do
+            if [ "$task" != "all" ]; then
+                print_separator
+                install_task "$task"
+            fi
         done
     else
         install_task "$TASK"

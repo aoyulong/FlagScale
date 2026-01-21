@@ -44,10 +44,11 @@ jobs:
 
     steps:
       - name: Download source code artifact
-        uses: actions/download-artifact@v4
+        uses: ./.github/actions/download-artifact-retry
         with:
-          name: ${{ inputs.source_artifact }}
-          path: /tmp
+          artifact-name: ${{ inputs.source_artifact }}
+          download-path: /tmp
+          timeout-minutes: 10
 
       - name: Extract source code
         shell: bash
@@ -69,7 +70,8 @@ jobs:
           source /root/miniconda3/bin/activate flagscale-train
 
           # Use install script for hetero_train dependencies
-          ./install/install.sh \
+          ./tools/install/install.sh \
+            --platform cuda \
             --task hetero_train \
             --skip-conda-create \
             --retry-count 3

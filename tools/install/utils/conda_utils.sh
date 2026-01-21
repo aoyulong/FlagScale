@@ -2,8 +2,8 @@
 # Conda environment management utilities
 
 # Source utils for logging
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/utils.sh"
+_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$_UTILS_DIR/utils.sh"
 
 # Create a new conda environment
 # Usage: create_conda_env <env_name> [python_version]

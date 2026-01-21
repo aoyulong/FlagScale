@@ -1,0 +1,65 @@
+name: Download Artifact with Retry
+description: Downloads a GitHub Actions artifact with automatic retry on failure (up to 3 attempts)
+
+inputs:
+  artifact-name:
+    description: Name of the artifact to download
+    required: true
+  download-path:
+    description: Path where artifact should be downloaded
+    required: false
+    default: /tmp
+  timeout-minutes:
+    description: Timeout in minutes for each download attempt
+    required: false
+    default: '10'
+
+runs:
+  using: composite
+  steps:
+    - name: Download artifact (attempt 1)
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.download-path }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}
+      continue-on-error: true
+      id: download_attempt_1
+      shell: bash
+
+    - name: Download artifact (attempt 2)
+      if: steps.download_attempt_1.outcome == 'failure'
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.download-path }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}
+      continue-on-error: true
+      id: download_attempt_2
+      shell: bash
+
+    - name: Download artifact (attempt 3)
+      if: steps.download_attempt_2.outcome == 'failure'
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.download-path }}
+      timeout-minutes: ${{ inputs.timeout-minutes }}
+      id: download_attempt_3
+      shell: bash
+
+    - name: Check download success
+      shell: bash
+      run: |
+        if [ "${{ steps.download_attempt_1.outcome }}" == "success" ]; then
+          echo "✅ Artifact downloaded successfully on attempt 1"
+        elif [ "${{ steps.download_attempt_2.outcome }}" == "success" ]; then
+          echo "✅ Artifact downloaded successfully on attempt 2 (retried once)"
+        elif [ "${{ steps.download_attempt_3.outcome }}" == "success" ]; then
+          echo "✅ Artifact downloaded successfully on attempt 3 (retried twice)"
+        else
+          echo "❌ Error: All 3 download attempts failed"
+          echo "Artifact name: ${{ inputs.artifact-name }}"
+          echo "Download path: ${{ inputs.download-path }}"
+          exit 1
+        fi

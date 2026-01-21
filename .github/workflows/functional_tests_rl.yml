@@ -72,7 +72,7 @@ jobs:
           echo "⚠️  PLACEHOLDER: RL task not yet implemented"
           echo "When implemented, this step will:"
           echo "  - Activate flagscale-rl conda environment"
-          echo "  - Run: ./install/install.sh --platform cuda --task rl --skip-conda-create --retry-count 3"
+          echo "  - Run: ./tools/install/install.sh --platform cuda --task rl --skip-conda-create --retry-count 3"
           echo ""
           echo "Skipping for now as no rl tests are defined."
         timeout-minutes: 1

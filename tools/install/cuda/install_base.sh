@@ -1,13 +1,13 @@
 #!/bin/bash
 # Base dependency installation script for CUDA platform
-# Installs core packages common to all tasks
+# Installs core dependencies (requirements is one type of dependency)
+# - Package requirements: common packages and CUDA base packages from requirements folder
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../utils/utils.sh"
 source "$SCRIPT_DIR/../utils/retry_utils.sh"
-source "$SCRIPT_DIR/../utils/validation.sh"
 
 # Platform
 PLATFORM="cuda"
@@ -25,16 +25,21 @@ main() {
     log_info "Platform: $PLATFORM"
     log_info "Conda environment: $(get_conda_env)"
 
+    # Install dependencies (requirements is one type of dependency)
+    # This script installs package requirements (pip packages from requirements folder)
+    install_package_requirements
+
+    print_header "Base Dependencies Installation Complete"
+}
+
+install_package_requirements() {
+    log_step "Installing package requirements (pip packages from requirements folder)"
+
     # Install platform-agnostic common requirements
     install_common_requirements
 
     # Install platform-specific base requirements
     install_platform_base_requirements
-
-    # Validate installation
-    validate_base_install
-
-    print_header "Base Dependencies Installation Complete"
 }
 
 install_common_requirements() {

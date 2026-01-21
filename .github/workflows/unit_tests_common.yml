@@ -39,11 +39,45 @@ jobs:
       volumes: ${{ fromJson(inputs.container_volumes) }}
       options: ${{ inputs.container_options }}
     steps:
-      - name: Download source code artifact
-        uses: ./.github/actions/download-artifact-retry
+      - name: Download source code artifact (attempt 1)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        id: download_attempt_1
         with:
-          artifact-name: ${{ inputs.source_artifact }}
-          download-path: /tmp
+          name: ${{ inputs.source_artifact }}
+          path: /tmp
+
+      - name: Download source code artifact (attempt 2)
+        if: steps.download_attempt_1.outcome == 'failure'
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        id: download_attempt_2
+        with:
+          name: ${{ inputs.source_artifact }}
+          path: /tmp
+
+      - name: Download source code artifact (attempt 3)
+        if: steps.download_attempt_2.outcome == 'failure'
+        uses: actions/download-artifact@v4
+        id: download_attempt_3
+        with:
+          name: ${{ inputs.source_artifact }}
+          path: /tmp
+
+      - name: Verify artifact download
+        shell: bash
+        run: |
+          if [ "${{ steps.download_attempt_1.outcome }}" == "success" ]; then
+            echo "✅ Artifact downloaded successfully on attempt 1"
+          elif [ "${{ steps.download_attempt_2.outcome }}" == "success" ]; then
+            echo "✅ Artifact downloaded successfully on attempt 2 (retried once)"
+          elif [ "${{ steps.download_attempt_3.outcome }}" == "success" ]; then
+            echo "✅ Artifact downloaded successfully on attempt 3 (retried twice)"
+          else
+            echo "❌ Error: All 3 download attempts failed"
+            echo "Artifact name: ${{ inputs.source_artifact }}"
+            exit 1
+          fi
 
       - name: Extract source code
         shell: bash

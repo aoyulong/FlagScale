@@ -25,7 +25,7 @@ log_step() {
 # Get the project root directory
 get_project_root() {
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    cd "$script_dir/../.."
+    cd "$script_dir/../../.."
     pwd
 }
 

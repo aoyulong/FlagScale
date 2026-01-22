@@ -27,9 +27,24 @@ on:
         required: true
         type: string
         description: Name of the artifact containing source code
+      conda_env:
+        required: false
+        type: string
+        description: Conda environment name (optional, skips conda if not provided)
+        default: ""
+      conda_path:
+        required: false
+        type: string
+        description: Conda installation path (optional, auto-detects if not provided)
+        default: "/root/miniconda3"
 
 jobs:
   functional_test_train:
+    defaults:
+      run:
+        shell: bash
+    env:
+      PROJECT_ROOT: /workspace/FlagScale
     runs-on: ${{ fromJson(inputs.runs_on) }}
     strategy:
       fail-fast: false
@@ -69,7 +84,6 @@ jobs:
           path: /tmp
 
       - name: Verify artifact download
-        shell: bash
         run: |
           if [ "${{ steps.download_attempt_1.outcome }}" == "success" ]; then
             echo "✅ Artifact downloaded successfully on attempt 1"
@@ -84,27 +98,44 @@ jobs:
           fi
 
       - name: Extract source code
-        shell: bash
         run: |
-          mkdir -p /__w/FlagScale/FlagScale
-          tar -xzf /tmp/flagscale-source.tar.gz -C /__w/FlagScale/FlagScale
+          mkdir -p $PROJECT_ROOT
+          tar -xzf /tmp/flagscale-source.tar.gz -C $PROJECT_ROOT
 
       - name: Set safe directory
-        shell: bash
         run: |
-          git config --global --add safe.directory /__w/FlagScale/FlagScale
+          git config --global --add safe.directory $PROJECT_ROOT
 
       - name: Install dependencies for training
-        shell: bash
         run: |
           set -euo pipefail
-          cd /__w/FlagScale/FlagScale
+          cd $PROJECT_ROOT
 
-          source /root/miniconda3/bin/activate flagscale-train
+          CONDA_ENV='${{ inputs.conda_env }}'
+          CONDA_PATH='${{ inputs.conda_path }}'
+
+          # Source conda utilities for reusable functions
+          source ./tools/install/utils/conda_utils.sh
+
+          # Conditionally activate conda environment if specified
+          if [ -n "$CONDA_ENV" ]; then
+            if activate_conda "$CONDA_ENV" "$CONDA_PATH"; then
+              : # Success message already displayed by activate_conda
+            else
+              echo "⚠️  Conda environment requested but conda not found in common locations"
+              echo "Continuing without conda activation..."
+            fi
+          else
+            echo "ℹ️  No conda environment specified, using system Python"
+          fi
+
+          # Display Python environment info
+          echo "Python location: $(which python)"
+          echo "Python version: $(python --version)"
 
           # Use install script for training dependencies
           ./tools/install/install.sh \
-            --platform cuda \
+            --platform '${{ inputs.platform }}' \
             --task train \
             --skip-conda-create \
             --retry-count 3
@@ -112,17 +143,17 @@ jobs:
 
       - name: Run functional tests
         id: functional_test
-        shell: bash
         run: |
           set -euo pipefail
-          cd /__w/FlagScale/FlagScale
+          cd $PROJECT_ROOT
 
           PLATFORM='${{ inputs.platform }}'
           DEVICE='${{ matrix.test_config.device }}'
           TASK='${{ matrix.test_config.task }}'
           MODEL='${{ matrix.test_config.model }}'
           CASE='${{ matrix.test_config.case }}'
-          PROJECT_ROOT="/__w/FlagScale/FlagScale"
+          CONDA_ENV='${{ inputs.conda_env }}'
+          CONDA_PATH='${{ inputs.conda_path }}'
 
           echo "Running functional tests for training"
           echo "Platform: $PLATFORM"
@@ -132,8 +163,24 @@ jobs:
           echo "Case: ${CASE:-all}"
           echo "Project root: $PROJECT_ROOT"
 
-          # Activate conda environment
-          source /root/miniconda3/bin/activate flagscale-train
+          # Source conda utilities for reusable functions
+          source ./tools/install/utils/conda_utils.sh
+
+          # Conditionally activate conda environment if specified
+          if [ -n "$CONDA_ENV" ]; then
+            if activate_conda "$CONDA_ENV" "$CONDA_PATH"; then
+              : # Success message already displayed by activate_conda
+            else
+              echo "⚠️  Conda environment requested but conda not found"
+              echo "Continuing without conda activation..."
+            fi
+          else
+            echo "ℹ️  Running tests with system Python"
+          fi
+
+          # Display Python environment info
+          echo "Python location: $(which python)"
+          echo "Python version: $(python --version)"
 
           # Run functional tests using run_tests.sh
           bash "$PROJECT_ROOT/tests/test_utils/runners/run_tests.sh" \

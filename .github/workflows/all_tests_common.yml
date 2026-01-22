@@ -10,6 +10,9 @@ on:
 
 jobs:
   checkout_and_config:
+    defaults:
+      run:
+        shell: bash
     runs-on: ubuntu-latest
     outputs:
       ci_image: ${{ steps.config.outputs.ci_image }}
@@ -103,6 +106,8 @@ jobs:
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
       source_artifact: flagscale-source-${{ github.sha }}
+      conda_env: flagscale-train  # Optional: can be empty for non-conda environments
+      conda_path: "/root/miniconda3"  # Optional: specify custom conda path, empty for auto-detection
 
   functional_tests_train:
     needs:
@@ -118,6 +123,8 @@ jobs:
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
       source_artifact: flagscale-source-${{ github.sha }}
+      conda_env: flagscale-train  # Optional: can be empty for non-conda environments
+      conda_path: "/root/miniconda3"  # Optional: specify custom conda path, empty for auto-detection
 
   functional_tests_hetero_train:
     needs:
@@ -133,6 +140,8 @@ jobs:
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
       source_artifact: flagscale-source-${{ github.sha }}
+      conda_env: flagscale-train  # Optional: can be empty for non-conda environments
+      conda_path: "/root/miniconda3"  # Optional: specify custom conda path, empty for auto-detection
 
   functional_tests_inference:
     needs:
@@ -148,6 +157,8 @@ jobs:
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
       source_artifact: flagscale-source-${{ github.sha }}
+      conda_env: flagscale-inference  # Optional: can be empty for non-conda environments
+      conda_path: "/root/miniconda3"  # Optional: specify custom conda path, empty for auto-detection
 
   functional_tests_rl:
     needs:
@@ -163,8 +174,13 @@ jobs:
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
       source_artifact: flagscale-source-${{ github.sha }}
+      conda_env: flagscale-rl  # Optional: can be empty for non-conda environments
+      conda_path: "/root/miniconda3"  # Optional: specify custom conda path, empty for auto-detection
 
   all_tests_complete:
+    defaults:
+      run:
+        shell: bash
     needs:
       - checkout_and_config
       - unit_tests

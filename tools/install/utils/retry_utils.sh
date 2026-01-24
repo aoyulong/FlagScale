@@ -2,6 +2,10 @@
 # Retry utilities for network-dependent operations
 # Extracted from .github/workflows/scripts/retry_functions.sh
 
+# Source utils for logging functions
+_RETRY_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$_RETRY_UTILS_DIR/utils.sh"
+
 # Retry a single command with a specified number of attempts
 # Usage: retry <retry_count> <command>
 retry() {

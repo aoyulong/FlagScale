@@ -114,31 +114,17 @@ jobs:
           CONDA_ENV='${{ inputs.conda_env }}'
           CONDA_PATH='${{ inputs.conda_path }}'
 
-          # Source conda utilities for reusable functions
-          source ./tools/install/utils/conda_utils.sh
-
-          # Conditionally activate conda environment if specified
+          # Build install command with optional conda parameters
+          INSTALL_CMD="./tools/install/install.sh --platform ${{ inputs.platform }} --task hetero_train --retry-count 3"
           if [ -n "$CONDA_ENV" ]; then
-            if activate_conda "$CONDA_ENV" "$CONDA_PATH"; then
-              : # Success message already displayed by activate_conda
-            else
-              echo "⚠️  Conda environment requested but conda not found in common locations"
-              echo "Continuing without conda activation..."
+            INSTALL_CMD="$INSTALL_CMD --conda-env $CONDA_ENV"
+            if [ -n "$CONDA_PATH" ]; then
+              INSTALL_CMD="$INSTALL_CMD --conda-path $CONDA_PATH"
             fi
-          else
-            echo "ℹ️  No conda environment specified, using system Python"
           fi
 
-          # Display Python environment info
-          echo "Python location: $(which python)"
-          echo "Python version: $(python --version)"
-
-          # Use install script for hetero_train dependencies
-          ./tools/install/install.sh \
-            --platform '${{ inputs.platform }}' \
-            --task hetero_train \
-            --skip-conda-create \
-            --retry-count 3
+          # Run install script (handles conda activation internally if needed)
+          eval $INSTALL_CMD
         timeout-minutes: 30
 
       - name: Run functional tests

@@ -68,6 +68,7 @@ activate_conda() {
     done
 
     # Method 3: Try to find conda using which
+    local conda_exe conda_base
     if conda_exe=$(which conda 2>/dev/null); then
         conda_base=$(dirname "$(dirname "$conda_exe")")
         if [ -f "$conda_base/bin/activate" ]; then

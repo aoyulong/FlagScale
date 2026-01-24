@@ -31,6 +31,7 @@ get_project_root() {
 
 # Check if Python version meets minimum requirement
 # Usage: check_python_version [min_version]
+# Example: check_python_version 3.12
 check_python_version() {
     local min_version=${1:-"3.10"}
 
@@ -39,16 +40,27 @@ check_python_version() {
         return 1
     fi
 
-    local python_version=$(python --version 2>&1 | awk '{print $2}')
+    local python_version
+    python_version=$(python --version 2>&1 | awk '{print $2}')
     log_info "Found Python version: $python_version"
 
-    # Simple version check - checks if version starts with 3.1x where x >= 0
-    if ! python --version 2>&1 | grep -qE "Python 3\.([1-9][0-9]|1[0-9])"; then
+    # Parse version components
+    local py_major py_minor min_major min_minor
+    py_major=$(echo "$python_version" | cut -d. -f1)
+    py_minor=$(echo "$python_version" | cut -d. -f2)
+    min_major=$(echo "$min_version" | cut -d. -f1)
+    min_minor=$(echo "$min_version" | cut -d. -f2)
+
+    # Compare versions: major must match or exceed, then check minor
+    if [ "$py_major" -lt "$min_major" ]; then
+        log_error "Python $min_version+ required, found $python_version"
+        return 1
+    elif [ "$py_major" -eq "$min_major" ] && [ "$py_minor" -lt "$min_minor" ]; then
         log_error "Python $min_version+ required, found $python_version"
         return 1
     fi
 
-    log_success "Python version check passed"
+    log_success "Python version check passed (>= $min_version)"
     return 0
 }
 

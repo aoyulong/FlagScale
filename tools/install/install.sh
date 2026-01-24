@@ -12,6 +12,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/utils/utils.sh"
+source "$SCRIPT_DIR/utils/retry_utils.sh"
+source "$SCRIPT_DIR/utils/conda_utils.sh"
 
 # Get project root
 PROJECT_ROOT=$(get_project_root)
@@ -19,9 +21,9 @@ PROJECT_ROOT=$(get_project_root)
 # Default values
 TASK=""
 PLATFORM="cuda"  # Default to CUDA platform
-ENV_NAME=""
-SKIP_CONDA_CREATE="false"
 RETRY_COUNT="3"
+CONDA_ENV=""      # Optional: conda environment to activate
+CONDA_PATH=""     # Optional: custom conda installation path
 
 # Dynamically discover valid tasks from platform configuration
 discover_valid_tasks() {
@@ -86,43 +88,62 @@ discover_valid_platforms() {
     echo "${platforms[@]}"
 }
 
-# Discover valid tasks and platforms
-VALID_TASKS=($(discover_valid_tasks))
-VALID_PLATFORMS=($(discover_valid_platforms))
+# Arrays to hold valid tasks and platforms (populated after parse_args)
+VALID_TASKS=()
+VALID_PLATFORMS=()
+
+# Initialize valid platforms (can be done early as it doesn't depend on user input)
+init_valid_platforms() {
+    VALID_PLATFORMS=($(discover_valid_platforms))
+}
+
+# Initialize valid tasks (must be done after PLATFORM is known)
+init_valid_tasks() {
+    VALID_TASKS=($(discover_valid_tasks))
+}
 
 usage() {
+    # Ensure platforms are discovered for help display
+    if [ ${#VALID_PLATFORMS[@]} -eq 0 ]; then
+        init_valid_platforms
+    fi
+    # Discover tasks for the current platform (default or specified)
+    if [ ${#VALID_TASKS[@]} -eq 0 ]; then
+        init_valid_tasks
+    fi
+
     cat << EOF
 Usage: $0 [OPTIONS]
 
 Master installation script for FlagScale dependencies.
 
 OPTIONS:
-    --task TASK              Task type: ${VALID_TASKS[*]} (required)
+    --task TASK              Task type (required, see discovered tasks below)
     --platform PLATFORM      Platform: ${VALID_PLATFORMS[*]} (default: cuda)
-    --env-name NAME          Custom conda environment name (optional)
-    --skip-conda-create      Skip conda environment creation (use existing)
     --retry-count N          Number of retry attempts (default: 3)
+    --conda-env ENV          Optional: activate conda environment before install
+    --conda-path PATH        Optional: custom conda installation path
     --help                   Show this help message
 
 EXAMPLES:
     # Install training dependencies for CUDA platform
-    $0 --task train --platform cuda --skip-conda-create
+    $0 --task train --platform cuda
 
     # Install hetero_train dependencies (defaults to CUDA)
-    $0 --task hetero_train --skip-conda-create
+    $0 --task hetero_train
 
     # Install all task dependencies
     $0 --task all --platform cuda
 
     # Install with custom retry count
-    $0 --task train --skip-conda-create --retry-count 5
+    $0 --task train --retry-count 5
 
 TASK DISCOVERY:
     Tasks are discovered from platform configuration files:
       - Primary: tests/test_utils/config/platforms/\${PLATFORM}.yaml
       - Fallback: install/\${PLATFORM}/install_*.sh scripts
 
-DISCOVERED VALID TASKS:
+DISCOVERED VALID TASKS (for platform: $PLATFORM):
 $(printf '    %s\n' "${VALID_TASKS[@]}")
 
 DISCOVERED VALID PLATFORMS:
@@ -142,16 +163,16 @@ parse_args() {
                 PLATFORM="$2"
                 shift 2
                 ;;
-            --env-name)
-                ENV_NAME="$2"
-                shift 2
-                ;;
-            --skip-conda-create)
-                SKIP_CONDA_CREATE="true"
-                shift
-                ;;
             --retry-count)
                 RETRY_COUNT="$2"
+                shift 2
+                ;;
+            --conda-env)
+                CONDA_ENV="$2"
+                shift 2
+                ;;
+            --conda-path)
+                CONDA_PATH="$2"
                 shift 2
                 ;;
             --help|-h)
@@ -168,30 +189,11 @@ parse_args() {
 }
 
 validate_inputs() {
-    # Check if task is specified
-    if [ -z "$TASK" ]; then
-        log_error "Task not specified. Use --task to specify a task."
-        usage
-        exit 1
-    fi
+    # Initialize valid platforms first
+    init_valid_platforms
 
-    # Check if task is valid
+    # Check if platform is valid (must validate platform before discovering tasks)
     local valid=false
-    for valid_task in "${VALID_TASKS[@]}"; do
-        if [ "$TASK" = "$valid_task" ]; then
-            valid=true
-            break
-        fi
-    done
-
-    if [ "$valid" = "false" ]; then
-        log_error "Invalid task: $TASK"
-        log_error "Valid tasks: ${VALID_TASKS[*]}"
-        exit 1
-    fi
-
-    # Check if platform is valid
-    valid=false
     for valid_platform in "${VALID_PLATFORMS[@]}"; do
         if [ "$PLATFORM" = "$valid_platform" ]; then
             valid=true
@@ -205,6 +207,31 @@ validate_inputs() {
         exit 1
     fi
 
+    # Now discover valid tasks for the specified platform
+    init_valid_tasks
+
+    # Check if task is specified
+    if [ -z "$TASK" ]; then
+        log_error "Task not specified. Use --task to specify a task."
+        usage
+        exit 1
+    fi
+
+    # Check if task is valid
+    valid=false
+    for valid_task in "${VALID_TASKS[@]}"; do
+        if [ "$TASK" = "$valid_task" ]; then
+            valid=true
+            break
+        fi
+    done
+
+    if [ "$valid" = "false" ]; then
+        log_error "Invalid task: $TASK"
+        log_error "Valid tasks for platform '$PLATFORM': ${VALID_TASKS[*]}"
+        exit 1
+    fi
+
     # Validate retry count
     if ! [[ "$RETRY_COUNT" =~ ^[0-9]+$ ]] || [ "$RETRY_COUNT" -lt 1 ]; then
         log_error "Invalid retry count: $RETRY_COUNT (must be positive integer)"
@@ -214,36 +241,65 @@ validate_inputs() {
     log_success "Input validation passed"
 }
 
-export_env_vars() {
-    export PLATFORM
-    export ENV_NAME
-    export RETRY_COUNT
-    export PROJECT_ROOT
+# Install platform-specific base dependencies
+install_base_dependencies() {
+    local base_script="$SCRIPT_DIR/$PLATFORM/install_base.sh"
 
-    log_info "Environment variables exported:"
-    log_info "  PLATFORM=$PLATFORM"
-    log_info "  ENV_NAME=$ENV_NAME"
-    log_info "  RETRY_COUNT=$RETRY_COUNT"
-    log_info "  PROJECT_ROOT=$PROJECT_ROOT"
+    if [ ! -f "$base_script" ]; then
+        log_warn "Base install script not found: $base_script (skipping)"
+        return 0
+    fi
+
+    log_step "Installing base dependencies for platform: $PLATFORM"
+    chmod +x "$base_script" 2>/dev/null || true
+    "$base_script"
 }
 
+# Install task-specific pip requirements
+install_task_requirements() {
+    local task=$1
+    local requirements_file="$PROJECT_ROOT/requirements/$PLATFORM/${task}.txt"
+
+    if [ ! -f "$requirements_file" ]; then
+        log_info "No task requirements file: $requirements_file (skipping)"
+        return 0
+    fi
+
+    log_step "Installing pip requirements for task: $task"
+    retry_pip_install "$requirements_file" "$RETRY_COUNT"
+}
+
+# Install task-specific source dependencies (git repos, etc.)
+install_source_dependencies() {
+    local task=$1
+    local source_script="$SCRIPT_DIR/$PLATFORM/install_${task}.sh"
+
+    if [ ! -f "$source_script" ]; then
+        log_info "No source dependency script for task: $task (skipping)"
+        return 0
+    fi
+
+    log_step "Installing source dependencies for task: $task"
+    chmod +x "$source_script" 2>/dev/null || true
+    "$source_script"
+}
+
+# Install all dependencies for a task
 install_task() {
     local task=$1
-    local install_script="$SCRIPT_DIR/$PLATFORM/install_${task}.sh"
 
-    if [ ! -f "$install_script" ]; then
-        log_error "Install script not found for task '$task' on platform '$PLATFORM'"
-        log_error "Expected: $install_script"
-        exit 1
-    fi
+    print_header "Installing Dependencies for Task: $task ($PLATFORM)"
 
-    if [ ! -x "$install_script" ]; then
-        log_warn "Install script not executable, making it executable"
-        chmod +x "$install_script"
-    fi
+    # 1. Install base dependencies (platform-specific)
+    install_base_dependencies
 
-    log_step "Running install script for task '$task' on platform '$PLATFORM'"
-    "$install_script"
+    # 2. Install task pip requirements
+    install_task_requirements "$task"
+
+    # 3. Install task source dependencies (git repos, etc.)
+    install_source_dependencies "$task"
+
+    log_success "Task '$task' installation complete"
 }
 
 main() {
@@ -255,8 +311,15 @@ main() {
     # Validate inputs
     validate_inputs
 
-    # Export environment variables for sub-scripts
-    export_env_vars
+    # Optionally activate conda environment if specified
+    if [ -n "$CONDA_ENV" ]; then
+        log_step "Activating conda environment: $CONDA_ENV"
+        if activate_conda "$CONDA_ENV" "$CONDA_PATH"; then
+            : # Success message already displayed by activate_conda
+        else
+            log_warn "Conda activation failed, continuing with current environment"
+        fi
+    fi
 
     # Display current environment
     log_info "Current conda environment: $(get_conda_env)"

@@ -85,7 +85,7 @@ jobs:
           /usr/local/bin/yq --version
 
           # Source the platform config loading script
-          source .github/workflows/scripts/load_platform_config.sh
+          source ./tools/install/utils/load_platform_config.sh
 
           # Load configuration and group tests by task
           load_platform_config "$PLATFORM"

@@ -24,6 +24,7 @@ PLATFORM="cuda"  # Default to CUDA platform
 RETRY_COUNT="3"
 CONDA_ENV=""      # Optional: conda environment to activate
 CONDA_PATH=""     # Optional: custom conda installation path
+DEV_MODE="false"  # Install development dependencies (build, lint, test)
 
 # Dynamically discover valid tasks from platform configuration
 discover_valid_tasks() {
@@ -123,6 +124,7 @@ OPTIONS:
     --retry-count N          Number of retry attempts (default: 3)
     --conda-env ENV          Optional: activate conda environment before install
     --conda-path PATH        Optional: custom conda installation path
+    --dev                    Install development dependencies (build, lint, test)
     --help                   Show this help message
 
 EXAMPLES:
@@ -134,6 +136,9 @@ EXAMPLES:
 
     # Install all task dependencies
     $0 --task all --platform cuda
+
+    # Install with development dependencies (includes build, lint, test)
+    $0 --task train --dev
 
     # Install with custom retry count
     $0 --task train --retry-count 5
@@ -174,6 +179,10 @@ parse_args() {
             --conda-path)
                 CONDA_PATH="$2"
                 shift 2
+                ;;
+            --dev)
+                DEV_MODE="true"
+                shift
                 ;;
             --help|-h)
                 usage
@@ -258,7 +267,18 @@ install_base_dependencies() {
 # Install task-specific pip requirements
 install_task_requirements() {
     local task=$1
-    local requirements_file="$PROJECT_ROOT/requirements/$PLATFORM/${task}.txt"
+    local requirements_file
+
+    # Use _dev.txt if --dev flag is set, otherwise use regular .txt
+    if [ "$DEV_MODE" = "true" ]; then
+        requirements_file="$PROJECT_ROOT/requirements/$PLATFORM/${task}_dev.txt"
+        if [ ! -f "$requirements_file" ]; then
+            log_warn "Dev requirements not found: $requirements_file, falling back to regular"
+            requirements_file="$PROJECT_ROOT/requirements/$PLATFORM/${task}.txt"
+        fi
+    else
+        requirements_file="$PROJECT_ROOT/requirements/$PLATFORM/${task}.txt"
+    fi
 
     if [ ! -f "$requirements_file" ]; then
         log_info "No task requirements file: $requirements_file (skipping)"
@@ -266,6 +286,9 @@ install_task_requirements() {
     fi
 
     log_step "Installing pip requirements for task: $task"
+    if [ "$DEV_MODE" = "true" ]; then
+        log_info "Installing development dependencies (includes build, lint, test)"
+    fi
     retry_pip_install "$requirements_file" "$RETRY_COUNT"
 }
 
@@ -324,6 +347,11 @@ main() {
     # Display current environment
     log_info "Current conda environment: $(get_conda_env)"
     check_python_version || log_warn "Python version check failed (continuing anyway)"
+
+    # Display dev mode status
+    if [ "$DEV_MODE" = "true" ]; then
+        log_info "Development mode: ENABLED (will install build, lint, test deps)"
+    fi
 
     # Install dependencies based on task
     if [ "$TASK" = "all" ]; then

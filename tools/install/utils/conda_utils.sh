@@ -117,9 +117,10 @@ activate_conda() {
     local conda_path=${2:-""}
 
     # Method 0: Use explicitly provided conda path
-    if [ -n "$conda_path" ] && [ -f "$conda_path/bin/activate" ]; then
+    if [ -n "$conda_path" ] && [ -f "$conda_path/etc/profile.d/conda.sh" ]; then
         log_info "Using provided conda path: $conda_path"
-        source "$conda_path/bin/activate" "$env_name"
+        source "$conda_path/etc/profile.d/conda.sh"
+        conda activate "$env_name"
         if [ $? -eq 0 ]; then
             log_success "Activated conda environment: $env_name"
             return 0
@@ -150,9 +151,10 @@ activate_conda() {
     )
 
     for path in "${conda_paths[@]}"; do
-        if [ -f "$path/bin/activate" ]; then
+        if [ -f "$path/etc/profile.d/conda.sh" ]; then
             log_info "Found conda at $path"
-            source "$path/bin/activate" "$env_name"
+            source "$path/etc/profile.d/conda.sh"
+            conda activate "$env_name"
             if [ $? -eq 0 ]; then
                 log_success "Activated conda environment: $env_name"
                 return 0

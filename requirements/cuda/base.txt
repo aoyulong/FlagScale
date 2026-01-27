@@ -1,4 +1,11 @@
 # CUDA platform-specific base dependencies
 # Includes PyTorch with CUDA support and common dependencies
+#
+# Versions are defined in versions.json (cuda section, pip: true)
 
 -r ../common.txt
+
+# PyTorch with CUDA support
+torch==2.9.1
+torchaudio==2.9.1
+torchvision==0.24.1

@@ -1,5 +1,6 @@
 # Linting and formatting dependencies
 # Code quality tools including formatters (black, isort) and linters (flake8, pylint)
+# Versions are defined in versions.json (dev section, pip: true)
 
 pre-commit==4.2.0
 black==24.4.2

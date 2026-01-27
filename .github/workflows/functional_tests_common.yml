@@ -27,16 +27,21 @@ on:
         required: false
         type: string
         description: Specific test case (e.g., tp2_pp2, tp4_pp2)
-      conda_env:
+      pkg_mgr:
         required: false
         type: string
-        description: Conda environment name (optional, skips conda if not provided)
+        description: Package manager (pip, uv, conda). Default uv.
+        default: "uv"
+      env_name:
+        required: false
+        type: string
+        description: Conda environment name (for conda only)
         default: ""
-      conda_path:
+      env_path:
         required: false
         type: string
-        description: Conda installation path (optional, auto-detects if not provided)
-        default: "/root/miniconda3"
+        description: Environment path (venv path for uv, conda installation path for conda)
+        default: "/opt/venv"
       image:
         required: true
         type: string
@@ -123,24 +128,32 @@ jobs:
           set -euo pipefail
           cd $PROJECT_ROOT
 
-          PLATFORM='${{ inputs.platform }}'
-          TASK='${{ inputs.task }}'
-          CONDA_ENV='${{ inputs.conda_env }}'
-          CONDA_PATH='${{ inputs.conda_path }}'
+          PKG_MGR='${{ inputs.pkg_mgr }}'
+          ENV_NAME='${{ inputs.env_name }}'
+          ENV_PATH='${{ inputs.env_path }}'
 
-          echo "Installing dependencies for task: $TASK"
-          echo "Platform: $PLATFORM"
+          echo "Installing dependencies for task: ${{ inputs.task }}"
+          echo "Platform: ${{ inputs.platform }}"
+          echo "Package Manager: $PKG_MGR"
 
-          # Build install command with optional conda parameters
-          INSTALL_CMD="./tools/install/install.sh --platform $PLATFORM --task $TASK --retry-count 3"
-          if [ -n "$CONDA_ENV" ]; then
-            INSTALL_CMD="$INSTALL_CMD --conda-env $CONDA_ENV"
-            if [ -n "$CONDA_PATH" ]; then
-              INSTALL_CMD="$INSTALL_CMD --conda-path $CONDA_PATH"
-            fi
+          # Build install command with package manager and environment parameters
+          INSTALL_CMD="./tools/install/install.sh --platform ${{ inputs.platform }} --task ${{ inputs.task }} --retry-count 3"
+
+          # Add package manager option
+          if [ -n "$PKG_MGR" ]; then
+            INSTALL_CMD="$INSTALL_CMD --pkg-mgr $PKG_MGR"
           fi
 
-          # Run install script (handles conda activation internally if needed)
+          # Add environment options based on package manager
+          if [ "$PKG_MGR" = "conda" ] && [ -n "$ENV_NAME" ]; then
+            INSTALL_CMD="$INSTALL_CMD --env-name $ENV_NAME"
+          fi
+          if [ -n "$ENV_PATH" ]; then
+            INSTALL_CMD="$INSTALL_CMD --env-path $ENV_PATH"
+          fi
+
+          # Run install script
+          echo "Running: $INSTALL_CMD"
           eval $INSTALL_CMD
         timeout-minutes: 30
 
@@ -155,8 +168,9 @@ jobs:
           TASK='${{ inputs.task }}'
           MODEL='${{ inputs.model }}'
           CASE='${{ inputs.case }}'
-          CONDA_ENV='${{ inputs.conda_env }}'
-          CONDA_PATH='${{ inputs.conda_path }}'
+          PKG_MGR='${{ inputs.pkg_mgr }}'
+          ENV_NAME='${{ inputs.env_name }}'
+          ENV_PATH='${{ inputs.env_path }}'
 
           echo "Running functional tests for $TASK"
           echo "Platform: $PLATFORM"
@@ -164,22 +178,29 @@ jobs:
           echo "Task: $TASK"
           echo "Model: $MODEL"
           echo "Case: ${CASE:-all}"
+          echo "Package Manager: $PKG_MGR"
           echo "Project root: $PROJECT_ROOT"
 
-          # Source conda utilities for reusable functions
+          # Source environment utilities
           source ./tools/install/utils/conda_utils.sh
+          source ./tools/install/utils/pkg_utils.sh
 
-          # Conditionally activate conda environment if specified
-          if [ -n "$CONDA_ENV" ]; then
-            if activate_conda "$CONDA_ENV" "$CONDA_PATH"; then
-              : # Success message already displayed by activate_conda
-            else
-              echo "⚠️  Conda environment requested but conda not found"
-              echo "Continuing without conda activation..."
-            fi
-          else
-            echo "ℹ️  Running tests with system Python"
-          fi
+          # Activate environment based on package manager
+          case "$PKG_MGR" in
+            conda)
+              if [ -n "$ENV_NAME" ]; then
+                activate_conda "$ENV_NAME" "$ENV_PATH" || echo "⚠️  Conda activation failed"
+              fi
+              ;;
+            uv)
+              if [ -n "$ENV_PATH" ] && [ -d "$ENV_PATH" ]; then
+                activate_uv_env "$ENV_PATH" || echo "⚠️  UV activation failed"
+              fi
+              ;;
+            pip)
+              echo "ℹ️  Running tests with pip/system Python"
+              ;;
+          esac
 
           # Display Python environment info
           echo "Python location: $(which python)"

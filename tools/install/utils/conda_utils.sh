@@ -1,201 +1,325 @@
 #!/bin/bash
-# Conda environment management utilities
-
-# Source utils for logging
-_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$_UTILS_DIR/utils.sh"
-
-# Advanced conda activation with auto-detection of installation locations
-# This function tries multiple methods to find and activate conda
-# Usage: activate_conda <env_name> [conda_custom_path]
-# Returns: 0 on success, 1 on failure
+# =============================================================================
+# Conda/UV Environment Utilities
+# =============================================================================
 #
-# Priority order:
-#   0. Use explicitly provided conda path (if provided)
-#   1. Check if conda is already in PATH
-#   2. Search common conda installation locations
-#   3. Use 'which' to find conda dynamically
-activate_conda() {
-    local env_name=$1
-    local conda_custom_path=${2:-""}
+# Provides environment management for both conda and uv.
+# Supports conda for CI/CD compatibility and uv for modern workflows.
+#
+# Environment selection:
+#   FLAGSCALE_ENV_MANAGER - Set to "conda", "uv", or "auto" (default: auto)
+#
+# Usage:
+#   source conda_utils.sh
+#   activate_env "env_name" [conda_path]   # For conda
+#   activate_uv_env [venv_path]            # For uv
+# =============================================================================
 
-    # Method 0: Use explicitly provided conda path if available
-    if [ -n "$conda_custom_path" ]; then
-        if [ -f "$conda_custom_path/bin/activate" ]; then
-            echo "🐍 Using provided conda path: $conda_custom_path"
-            source "$conda_custom_path/bin/activate" "$env_name"
-            if [ $? -eq 0 ]; then
-                echo "✅ Successfully activated conda environment: $env_name"
-                return 0
-            fi
+_CONDA_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$_CONDA_UTILS_DIR/utils.sh"
+
+# =============================================================================
+# Environment Detection
+# =============================================================================
+
+# Check if running in uv environment
+is_uv_env() {
+    [ -n "${UV_PROJECT_ENVIRONMENT:-}" ] || \
+    ([ -n "${VIRTUAL_ENV:-}" ] && [ -z "${CONDA_DEFAULT_ENV:-}" ])
+}
+
+# Check if running in conda environment
+is_conda_active() {
+    [ -n "${CONDA_DEFAULT_ENV:-}" ] && [ "${CONDA_DEFAULT_ENV}" != "base" ]
+}
+
+# Check if uv is available
+has_uv() {
+    command -v uv &> /dev/null
+}
+
+# Check if conda is available
+has_conda() {
+    command -v conda &> /dev/null
+}
+
+# Detect environment manager
+detect_env_manager() {
+    if [ -n "${FLAGSCALE_ENV_MANAGER:-}" ]; then
+        echo "${FLAGSCALE_ENV_MANAGER}"
+        return
+    fi
+
+    # Auto-detect based on environment
+    if is_conda_active || has_conda; then
+        echo "conda"
+    elif is_uv_env || has_uv; then
+        echo "uv"
+    else
+        echo "conda"  # Default fallback
+    fi
+}
+
+# Get current environment name
+get_current_env() {
+    if [ -n "${CONDA_DEFAULT_ENV:-}" ]; then
+        echo "$CONDA_DEFAULT_ENV"
+    elif [ -n "${VIRTUAL_ENV:-}" ]; then
+        basename "$VIRTUAL_ENV"
+    else
+        echo "base"
+    fi
+}
+
+# =============================================================================
+# UV Environment Activation
+# =============================================================================
+
+# Activate uv virtual environment
+# Usage: activate_uv_env [venv_path]
+activate_uv_env() {
+    local venv_path=${1:-${UV_PROJECT_ENVIRONMENT:-"/opt/venv"}}
+
+    # Check if venv exists
+    if [ ! -d "$venv_path" ]; then
+        log_warn "UV venv not found at $venv_path"
+
+        # Try to create it if uv is available
+        if has_uv; then
+            log_info "Creating uv venv at $venv_path"
+            uv venv "$venv_path"
         else
-            echo "⚠️  Provided conda path not valid: $conda_custom_path"
-            echo "Falling back to auto-detection..."
+            log_error "Cannot create venv: uv not available"
+            return 1
         fi
     fi
 
-    # Method 1: Check if conda command is already available
-    if command -v conda &> /dev/null; then
-        echo "🐍 Found conda in PATH, activating environment: $env_name"
-        eval "$(conda shell.bash hook)"
-        conda activate "$env_name"
+    # Activate the venv
+    if [ -f "$venv_path/bin/activate" ]; then
+        source "$venv_path/bin/activate"
+        export UV_PROJECT_ENVIRONMENT="$venv_path"
+        log_success "Activated uv environment: $venv_path"
+        return 0
+    else
+        log_error "Invalid venv at $venv_path (no bin/activate)"
+        return 1
+    fi
+}
+
+# =============================================================================
+# Conda Activation
+# =============================================================================
+
+# Activate conda environment with auto-detection
+# Usage: activate_conda <env_name> [conda_path]
+activate_conda() {
+    local env_name=$1
+    local conda_path=${2:-""}
+
+    # Method 0: Use explicitly provided conda path
+    if [ -n "$conda_path" ] && [ -f "$conda_path/bin/activate" ]; then
+        log_info "Using provided conda path: $conda_path"
+        source "$conda_path/bin/activate" "$env_name"
         if [ $? -eq 0 ]; then
-            echo "✅ Successfully activated conda environment: $env_name"
+            log_success "Activated conda environment: $env_name"
             return 0
         fi
     fi
 
-    # Method 2: Check common conda installation locations
+    # Method 1: Check if conda is already in PATH
+    if command -v conda &> /dev/null; then
+        log_info "Found conda in PATH"
+        eval "$(conda shell.bash hook)"
+        conda activate "$env_name"
+        if [ $? -eq 0 ]; then
+            log_success "Activated conda environment: $env_name"
+            return 0
+        fi
+    fi
+
+    # Method 2: Search common conda locations
     local conda_paths=(
+        "/opt/miniconda3"
+        "/opt/conda"
         "/root/miniconda3"
         "/root/anaconda3"
         "$HOME/miniconda3"
         "$HOME/anaconda3"
-        "/opt/conda"
         "/usr/local/miniconda3"
         "/usr/local/anaconda3"
     )
 
-    for conda_path in "${conda_paths[@]}"; do
-        if [ -f "$conda_path/bin/activate" ]; then
-            echo "🐍 Found conda at $conda_path, activating environment: $env_name"
-            source "$conda_path/bin/activate" "$env_name"
+    for path in "${conda_paths[@]}"; do
+        if [ -f "$path/bin/activate" ]; then
+            log_info "Found conda at $path"
+            source "$path/bin/activate" "$env_name"
             if [ $? -eq 0 ]; then
-                echo "✅ Successfully activated conda environment: $env_name"
+                log_success "Activated conda environment: $env_name"
                 return 0
             fi
         fi
     done
 
-    # Method 3: Try to find conda using which
-    local conda_exe conda_base
-    if conda_exe=$(which conda 2>/dev/null); then
-        conda_base=$(dirname "$(dirname "$conda_exe")")
-        if [ -f "$conda_base/bin/activate" ]; then
-            echo "🐍 Found conda via which at $conda_base, activating environment: $env_name"
-            source "$conda_base/bin/activate" "$env_name"
-            if [ $? -eq 0 ]; then
-                echo "✅ Successfully activated conda environment: $env_name"
-                return 0
-            fi
-        fi
-    fi
-
-    echo "❌ Failed to find and activate conda environment: $env_name"
+    log_error "Failed to activate conda environment: $env_name"
     return 1
 }
 
-# Display conda and Python environment information
-# Usage: display_python_info
-display_python_info() {
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "  Python Environment Information"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+# =============================================================================
+# Unified Environment Activation
+# =============================================================================
+
+# Activate environment (supports both conda and uv)
+# Usage: activate_env <env_name_or_path> [conda_path] [--manager conda|uv|auto]
+#
+# The function auto-detects the environment manager based on:
+#   1. FLAGSCALE_ENV_MANAGER environment variable
+#   2. Whether UV_PROJECT_ENVIRONMENT is set
+#   3. Whether conda is available
+#
+# Examples:
+#   activate_env "flagscale-train"              # Activate conda env
+#   activate_env "/opt/venv" "" --manager uv    # Activate uv venv
+#   activate_env "myenv" "/opt/miniconda3"      # Conda with custom path
+activate_env() {
+    local env_name=$1
+    local conda_path=${2:-""}
+    local manager=""
+
+    # Parse optional --manager argument
+    shift 2 2>/dev/null || shift $# 2>/dev/null
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --manager) manager="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    # Determine manager if not specified
+    if [ -z "$manager" ]; then
+        manager=$(detect_env_manager)
+    fi
+
+    log_info "Environment manager: $manager"
+
+    case "$manager" in
+        uv)
+            # For uv, env_name is the venv path
+            local venv_path="${env_name:-${UV_PROJECT_ENVIRONMENT:-/opt/venv}}"
+            if is_uv_env; then
+                log_info "Using existing uv environment: ${UV_PROJECT_ENVIRONMENT:-$VIRTUAL_ENV}"
+                return 0
+            fi
+            activate_uv_env "$venv_path"
+            return $?
+            ;;
+        conda)
+            # For conda, env_name is the environment name
+            if [ -n "$env_name" ]; then
+                activate_conda "$env_name" "$conda_path"
+                return $?
+            fi
+            log_info "No conda environment specified"
+            return 0
+            ;;
+        auto|*)
+            # Auto mode: try uv first if configured, then conda
+            if is_uv_env; then
+                log_info "Using uv environment: ${UV_PROJECT_ENVIRONMENT:-$VIRTUAL_ENV}"
+                return 0
+            elif [ -n "$env_name" ] && has_conda; then
+                activate_conda "$env_name" "$conda_path"
+                return $?
+            fi
+            log_info "No environment activation needed"
+            return 0
+            ;;
+    esac
+}
+
+# =============================================================================
+# Legacy Functions (for backwards compatibility)
+# =============================================================================
+
+# Get current conda environment name
+get_conda_env() {
+    get_current_env
+}
+
+# Display environment info
+display_env_info() {
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Environment Information"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     if command -v python &> /dev/null; then
-        echo "Python location: $(which python)"
-        echo "Python version: $(python --version 2>&1)"
+        echo "Python: $(which python)"
+        echo "Version: $(python --version 2>&1)"
     else
-        echo "⚠️  Python not found in PATH"
+        echo "Python: not found"
     fi
 
-    if [ -n "$CONDA_DEFAULT_ENV" ]; then
-        echo "Conda environment: $CONDA_DEFAULT_ENV"
-        if command -v conda &> /dev/null; then
-            local conda_prefix=$(conda info --base 2>/dev/null)
-            if [ -n "$conda_prefix" ]; then
-                echo "Conda prefix: $conda_prefix"
+    local manager=$(detect_env_manager)
+    echo "Env Manager: $manager"
+
+    if [ -n "${CONDA_DEFAULT_ENV:-}" ]; then
+        echo "Conda env: $CONDA_DEFAULT_ENV"
+    fi
+
+    if [ -n "${UV_PROJECT_ENVIRONMENT:-}" ]; then
+        echo "UV venv: $UV_PROJECT_ENVIRONMENT"
+    elif [ -n "${VIRTUAL_ENV:-}" ]; then
+        echo "Virtual env: $VIRTUAL_ENV"
+    fi
+
+    if [ -z "${CONDA_DEFAULT_ENV:-}" ] && [ -z "${VIRTUAL_ENV:-}" ]; then
+        echo "Environment: system"
+    fi
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+# =============================================================================
+# Environment Setup Functions
+# =============================================================================
+
+# Setup environment based on manager type
+# Usage: setup_env --manager <conda|uv> [--env-name NAME] [--conda-path PATH] [--uv-venv PATH]
+setup_env() {
+    local manager="auto"
+    local env_name=""
+    local conda_path=""
+    local uv_venv=""
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --manager)     manager="$2"; shift 2 ;;
+            --env-name)    env_name="$2"; shift 2 ;;
+            --conda-path)  conda_path="$2"; shift 2 ;;
+            --uv-venv)     uv_venv="$2"; shift 2 ;;
+            *)             shift ;;
+        esac
+    done
+
+    case "$manager" in
+        uv)
+            export FLAGSCALE_ENV_MANAGER="uv"
+            if [ -n "$uv_venv" ]; then
+                activate_uv_env "$uv_venv"
+            elif [ -n "${UV_PROJECT_ENVIRONMENT:-}" ]; then
+                activate_uv_env "${UV_PROJECT_ENVIRONMENT}"
             fi
-        fi
-    else
-        echo "Conda environment: none"
-    fi
-
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-}
-
-# Create a new conda environment
-# Usage: create_conda_env <env_name> [python_version]
-create_conda_env() {
-    local env_name=$1
-    local python_version=${2:-3.12}
-
-    if ! command_exists conda; then
-        log_error "Conda not found in PATH"
-        return 1
-    fi
-
-    # Check if environment already exists
-    if conda env list | grep -q "^${env_name} "; then
-        log_info "Conda environment '$env_name' already exists"
-        return 0
-    fi
-
-    log_step "Creating conda environment: $env_name (Python $python_version)"
-    if conda create -n "$env_name" python="$python_version" -y; then
-        log_success "Conda environment '$env_name' created successfully"
-        return 0
-    else
-        log_error "Failed to create conda environment '$env_name'"
-        return 1
-    fi
-}
-
-# Activate a conda environment (legacy function, kept for backwards compatibility)
-# Usage: activate_conda_env <env_name>
-# Note: Use activate_conda for better auto-detection capabilities
-activate_conda_env() {
-    local env_name=$1
-
-    if ! command_exists conda; then
-        log_error "Conda not found in PATH"
-        return 1
-    fi
-
-    # Get conda base directory
-    local conda_base=$(conda info --base)
-
-    if [ ! -f "$conda_base/bin/activate" ]; then
-        log_error "Conda activate script not found at $conda_base/bin/activate"
-        return 1
-    fi
-
-    log_step "Activating conda environment: $env_name"
-    source "$conda_base/bin/activate" "$env_name"
-
-    if [ $? -eq 0 ]; then
-        log_success "Conda environment '$env_name' activated"
-        log_info "Current environment: $(get_conda_env)"
-        return 0
-    else
-        log_error "Failed to activate conda environment '$env_name'"
-        return 1
-    fi
-}
-
-# Check if a conda environment exists
-# Usage: conda_env_exists <env_name>
-conda_env_exists() {
-    local env_name=$1
-
-    if ! command_exists conda; then
-        return 1
-    fi
-
-    if conda env list | grep -q "^${env_name} "; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-# List all conda environments
-list_conda_envs() {
-    if ! command_exists conda; then
-        log_error "Conda not found in PATH"
-        return 1
-    fi
-
-    log_info "Available conda environments:"
-    conda env list
+            ;;
+        conda)
+            export FLAGSCALE_ENV_MANAGER="conda"
+            if [ -n "$env_name" ]; then
+                activate_conda "$env_name" "$conda_path"
+            fi
+            ;;
+        auto|*)
+            # Let activate_env handle auto-detection
+            if [ -n "$env_name" ] || [ -n "$uv_venv" ]; then
+                activate_env "${env_name:-$uv_venv}" "$conda_path"
+            fi
+            ;;
+    esac
 }

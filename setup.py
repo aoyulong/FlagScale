@@ -3,34 +3,43 @@ import subprocess
 
 from setuptools import setup
 
-# Version is defined in pyproject.toml - keep in sync
-FLAGSCALE_VERSION = "1.0.0"
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _get_version() -> str:
+    """Read version from pyproject.toml (single source of truth, Python 3.11+)."""
+    try:
+        import tomllib
+
+        pyproject_path = os.path.join(SCRIPT_DIR, "pyproject.toml")
+        with open(pyproject_path, "rb") as f:
+            data = tomllib.load(f)
+            return data.get("project", {}).get("version", "0.0.0")
+    except Exception:
+        return "0.0.0"
+
+
+FLAGSCALE_VERSION = _get_version()
 INSTALL_SCRIPT = os.path.join(SCRIPT_DIR, "tools", "install", "install.sh")
 
 
 def is_pip_isolated_build():
     """Check if we're running in pip's isolated build environment.
 
-    Isolated builds copy source to a temp directory. We detect this by checking
-    if we're running from a temp location (e.g., /tmp/pip-*, /var/folders/*).
+    Prefer detection via pip/PEP 517 specific environment variables rather than
+    fragile filesystem heuristics that can misclassify user code directories.
     """
-    import tempfile
-
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    temp_dir = tempfile.gettempdir()
-
-    # Check if we're in a temp directory
-    if script_dir.startswith(temp_dir):
-        return True
-
-    # Check for common pip isolated build directory patterns
-    if "/pip-build-env-" in script_dir or "/pip-wheel-" in script_dir:
-        return True
-
-    # macOS temp directories
-    return script_dir.startswith("/var/folders/")
+    # Common environment markers set by pip during isolated/PEP 517 builds.
+    pip_env_markers = (
+        "PEP517_BUILD_BACKEND",
+        "PIP_BUILD_TRACKER",
+        "PIP_REQ_TRACKER",
+        "PIP_ISOLATED_ENV",
+    )
+    for var in pip_env_markers:
+        if os.environ.get(var):
+            return True
+    return False
 
 
 def run_install_script():
@@ -57,9 +66,10 @@ def run_install_script():
     ]
 
     print(f"[flagscale] Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, check=False)
-    if result.returncode != 0:
-        raise RuntimeError(f"Installation failed with exit code {result.returncode}")
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"Installation failed with exit code {exc.returncode}") from exc
 
 
 # Run install.sh when using: pip install --no-build-isolation .

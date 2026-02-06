@@ -55,16 +55,21 @@ def run_task(
 
 def get_action(stop: bool, dryrun: bool, test: bool, query: bool, tune: bool) -> str:
     """Determine action from flags (mutually exclusive)"""
-    if stop:
-        return "stop"
-    if dryrun:
-        return "dryrun"
-    if test:
-        return "test"
-    if query:
-        return "query"
-    if tune:
-        return "auto_tune"
+    flags = [
+        ("stop", stop),
+        ("dryrun", dryrun),
+        ("test", test),
+        ("query", query),
+        ("auto_tune", tune),
+    ]
+    set_flags = [name for name, value in flags if value]
+
+    if len(set_flags) > 1:
+        typer.echo(f"Error: Flags are mutually exclusive: --{', --'.join(set_flags)}", err=True)
+        raise typer.Exit(1)
+
+    if set_flags:
+        return set_flags[0]
     return "run"  # default
 
 
@@ -157,7 +162,7 @@ def serve(
     stop: bool = typer.Option(False, "--stop", help="Stop serving"),
     test: bool = typer.Option(False, "--test", help="Test serving"),
     tune: bool = typer.Option(False, "--tune", help="Auto-tune"),
-    port: int | None = typer.Option(None, "--port", "-p", help="Server port"),
+    port: int | None = typer.Option(None, "--port", help="Server port"),
     model_path: str | None = typer.Option(None, "--model-path", help="Model weights path"),
     engine_args: str | None = typer.Option(
         None, "--engine-args", help="Engine args as JSON string, e.g. '{\"a\":1}'"

@@ -23,7 +23,7 @@ flagscale = "flagscale.cli:flagscale"
 include = ["flagscale*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.yaml", "*.yml"]
+"flagscale" = ["**/*.yaml", "**/*.yml"]
 
 [tool.ruff]
 line-length = 100

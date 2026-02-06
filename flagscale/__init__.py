@@ -1,10 +1,27 @@
-# Version is defined in pyproject.toml - keep in sync
-__version__ = "1.0.0"
+def _get_version() -> str:
+    """Get version from importlib.metadata or parse pyproject.toml as fallback."""
+    try:
+        from importlib.metadata import version
 
-try:
-    # When installed as a package, use importlib.metadata for accurate version
-    from importlib.metadata import version as get_version
+        return version("flagscale")
+    except Exception:
+        pass
 
-    __version__ = get_version("flagscale")
-except Exception:
-    pass  # Use hardcoded version above
+    # Fallback: parse pyproject.toml for development mode (Python 3.11+)
+    try:
+        from pathlib import Path
+
+        import tomllib
+
+        pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+        if pyproject_path.exists():
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+                return data.get("project", {}).get("version", "0.0.0")
+    except Exception:
+        pass
+
+    return "0.0.0"
+
+
+__version__ = _get_version()

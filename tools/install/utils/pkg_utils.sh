@@ -85,6 +85,12 @@ should_build_package() {
 #   FLAGSCALE_INSTALL_SYSTEM/DEV/BASE/TASK - true/false
 #   FLAGSCALE_PIP_DEPS - comma-separated pip packages
 #   FLAGSCALE_SRC_DEPS - comma-separated source deps
+#   FLAGSCALE_ONLY_PIP - true/false (skip apt and source builds)
+
+# Check if only pip mode is enabled (skip apt and source builds)
+is_only_pip() {
+    [ "${FLAGSCALE_ONLY_PIP:-false}" = true ]
+}
 
 is_phase_enabled() {
     local phase="$1"
@@ -109,10 +115,14 @@ is_in_override() {
 
 # Should install source dep?
 # Usage: should_install_src <phase> <dep_name>
+# Priority: --src-deps override > --only-pip > phase enabled
 should_install_src() {
     local phase="$1" item="$2"
-    is_phase_enabled "$phase" && return 0
+    # Override flags have highest priority
     is_in_override src "$item" && return 0
+    # Skip source builds in only-pip mode (unless overridden above)
+    is_only_pip && return 1
+    is_phase_enabled "$phase" && return 0
     return 1
 }
 

@@ -4,4 +4,4 @@
 -r ./train.txt
 -r ./inference.txt
 -r ./rl.txt
--r ./server.txt
+-r ./serve.txt

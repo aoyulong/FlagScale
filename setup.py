@@ -176,12 +176,14 @@ def get_pip_install_cmd(extra_name):
 
 # NOTE: Installation methods:
 # 1. pip install .                    -> CLI only (typer)
-# 2. pip install ".[cuda-train]"      -> CLI + pip deps (normal)
-#    Then: pip install --no-build-isolation megatron-core@...  (for torch-dependent builds)
-#    Add --extra-index-url for CUDA:  --extra-index-url https://download.pytorch.org/whl/cu128
+# 2. pip install ".[cuda-train]"      -> CLI + pip deps + auto-install annotated packages
+#    Annotated packages (e.g. megatron-core with --no-build-isolation) are excluded from
+#    extras_require and auto-installed via _auto_install_annotated_packages() after setup().
+#    Requires torch to be pre-installed. Use -v/-vvv for detailed install output.
 # 3. pip install ".[cuda-all,dev]"    -> CLI + all CUDA pip deps + dev tools
 # 4. pip install -r requirements/cuda/train.txt  -> pip deps with index URLs (handled natively)
-#    Packages annotated with "# [--option ...]" need separate install with those options
+#    Packages annotated with "# [--option ...]" need separate install with those options.
+#    The shell installer (tools/install) handles this via parse_pkg_annotations().
 # 5. flagscale install                -> Full installation (apt + pip + ALL source deps including apex, flash-attn)
 
 setup(

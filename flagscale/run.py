@@ -116,7 +116,7 @@ def execute_action(runner, action: str, task_type: str, config: DictConfig) -> N
     elif action == "dryrun":
         runner.run(dryrun=True)
     elif action == "test":
-        runner.run(with_test=True)
+        runner.run(background=False)
     elif action == "stop":
         runner.stop()
     elif action == "query":

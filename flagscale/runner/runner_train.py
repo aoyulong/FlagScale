@@ -280,6 +280,7 @@ def _generate_run_script_train(
                 f'nohup bash -c "$cmd; sync" >> {host_output_file} 2>&1 & echo $! > {host_pid_file}\n'
             )
         else:
+            f.write("set -o pipefail\n")
             f.write(f'bash -c "$cmd; sync" 2>&1 | tee -a {host_output_file}\n')
         f.write("\n")
         f.flush()

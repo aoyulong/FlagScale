@@ -320,7 +320,9 @@ def run_local_command(cmd, dryrun=False, query=False, stream_output=False):
         return
     if stream_output:
         # Stdout/stderr go directly to the console (no capture).
-        subprocess.run(cmd, shell=True, check=False)
+        result = subprocess.run(cmd, shell=True, check=False)
+        if result.returncode != 0:
+            sys.exit(result.returncode)
         return
     result = subprocess.run(
         cmd,
@@ -355,7 +357,9 @@ def run_ssh_command(
 
     if stream_output:
         # Stdout/stderr stream directly to the login node console.
-        subprocess.run(ssh_cmd, shell=True, check=False)
+        result = subprocess.run(ssh_cmd, shell=True, check=False)
+        if result.returncode != 0:
+            sys.exit(result.returncode)
         return
 
     result = subprocess.run(
